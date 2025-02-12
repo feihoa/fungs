@@ -20,7 +20,10 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "permissions": ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"],
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
       "package": "fungi.apk"
     },
     "web": {
@@ -31,7 +34,10 @@
       [
         "expo-font",
         {
-          "fonts": ["./assets/fonts/comic-sans-regular.ttf", "./assets/fonts/comic-sans-bold.ttf"]
+          "fonts": [
+            "./assets/fonts/comic-sans-regular.ttf",
+            "./assets/fonts/comic-sans-bold.ttf"
+          ]
         }
       ],
       [
@@ -50,10 +56,14 @@
             "useSQLCipher": false
           },
           "ios": {
-            "customBuildFlags": ["-DSQLITE_ENABLE_DBSTAT_VTAB=1 -DSQLITE_ENABLE_SNAPSHOT=1"]
+            "customBuildFlags": [
+              "-DSQLITE_ENABLE_DBSTAT_VTAB=1 -DSQLITE_ENABLE_SNAPSHOT=1"
+            ]
           }
         }
-      ]
+      ],
+      "expo-build-properties",
+      "react-native-fast-tflite"
     ],
     "extra": {
       "eas": {

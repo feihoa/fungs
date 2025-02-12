@@ -2,6 +2,12 @@ module.exports = function (api) {
   api.cache(true);
   return {
     presets: ['babel-preset-expo'],
-    plugins: [['babel-plugin-root-import', { rootPathSuffix: 'app/', rootPathPrefix: '@/' }]],
+    plugins: [
+      ['babel-plugin-root-import', { rootPathSuffix: 'app/', rootPathPrefix: '@/' }],
+      [
+        'react-native-worklets-core/plugin'
+      ],
+      'react-native-reanimated/plugin',
+    ],
   };
 };

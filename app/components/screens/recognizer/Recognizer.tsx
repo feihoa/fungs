@@ -60,9 +60,7 @@ const Recognizer: React.FC<CameraScreenProps> = ({ navigation, model }) => {
       if (!outputs) throw new Error('Не удалось получить предсказания');
       
       const outputTensor = outputs[0] as ArrayLike<number>;
-      let probabilities: number[];
-      
-      probabilities = Array.from(outputTensor).map(value => Number(value));
+      let probabilities: number[] = Array.from(outputTensor).map(value => Number(value));
 
       return probabilities;
     } catch (error) {
