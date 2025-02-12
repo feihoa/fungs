@@ -1,30 +1,30 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Text, TouchableOpacity, View, StyleSheet, Alert } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as ImagePicker from 'expo-image-picker';
+import { Camera, Frame, useCameraDevice, useFrameProcessor } from 'react-native-vision-camera';
+import { TensorflowModel, useTensorflowModel } from 'react-native-fast-tflite';
+import { useResizePlugin } from 'vision-camera-resize-plugin';
 import AntDesign from '@expo/vector-icons/AntDesign';
 import Loader from '@/components/shared/Loader';
 import * as FileSystem from 'expo-file-system';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/navigation.types';
 import { useSQLiteContext } from 'expo-sqlite';
-import * as tf from '@tensorflow/tfjs';
-import { decodeJpeg } from '@tensorflow/tfjs-react-native';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import CameraOverlay from '@/components/shared/CameraOverlay';
 import SearchButton from '@/components/shared/SearchButton';
 import { Prediction } from '../types';
 import CameraHandler from './components/CameraHandler';
 
 type CameraScreenProps = NativeStackScreenProps<RootStackParamList, 'Recognizer'> & {
-  model: any;
+  model: TensorflowModel;
 };
 
 const Recognizer: React.FC<CameraScreenProps> = ({ navigation, model }) => {
-  const [permission, requestPermission] = useCameraPermissions();
+  const device = useCameraDevice('back');
   const [load, setLoad] = useState<boolean>(false);
-  const cameraRef = useRef(null);
+  const cameraRef = useRef<Camera>(null);
   const db = useSQLiteContext();
+  
+  const { resize } = useResizePlugin();
 
   const saveImageToAppFolder = async (uri: string) => {
     if (!FileSystem.documentDirectory) return null;
@@ -41,55 +41,34 @@ const Recognizer: React.FC<CameraScreenProps> = ({ navigation, model }) => {
     }
   };
 
-  const pickImage = async () => {
-    setLoad(true);
+  const getPredictions = async (uri: string) => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 1,
+      const imageBase64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
       });
 
-      if (!result.canceled && result.assets?.[0]?.uri) {
-        await handleSave(result.assets[0].uri);
-      } else {
-        setLoad(false);
-      }
-    } catch (error) {
-      console.error('Ошибка выбора изображения:', error);
-      Alert.alert('Ошибка', 'Не удалось открыть галерею');
-      setLoad(false);
-    }
-  };
+      const binaryString = atob(imageBase64);
+      const uint8Array = new Uint8Array(binaryString.length);
 
-  const makePredictions = async (img: any) => {
-    try {
-      const predictions = model.predict(img);
-      return predictions;
+      for (let i = 0; i < binaryString.length; i++) {
+        uint8Array[i] = binaryString.charCodeAt(i);
+      }
+
+      const inputs = [uint8Array];
+      const outputs = model.runSync(inputs);
+
+      if (!outputs) throw new Error('Не удалось получить предсказания');
+      
+      const outputTensor = outputs[0] as ArrayLike<number>;
+      let probabilities: number[];
+      
+      probabilities = Array.from(outputTensor).map(value => Number(value));
+
+      return probabilities;
     } catch (error) {
       console.error('Ошибка при предсказании:', error);
       throw error;
     }
-  };
-
-  const getPredictions = async (uri: string) => {
-    const resizedImage = await manipulateAsync(uri, [{ resize: { width: 224, height: 224 } }], {
-      compress: 0.7,
-      format: SaveFormat.JPEG,
-    });
-
-    const img64 = await FileSystem.readAsStringAsync(resizedImage.uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
-    const imgBuffer = tf.util.encodeString(img64, 'base64').buffer;
-    const raw = new Uint8Array(imgBuffer);
-    let imgTensor = decodeJpeg(raw);
-    const scalar = tf.scalar(255);
-    const tensorScaled = imgTensor.div(scalar);
-    const img = tf.reshape(tensorScaled, [1, 224, 224, 3]);
-
-    return await makePredictions(img);
   };
 
   const handleSave = async (uri: string) => {
@@ -97,9 +76,8 @@ const Recognizer: React.FC<CameraScreenProps> = ({ navigation, model }) => {
     try {
       const savedImageUri = await saveImageToAppFolder(uri);
       if (savedImageUri) {
-        const tensor = await getPredictions(savedImageUri);
-        const predictionsAll: number[][] = await tensor.arraySync();
-        const probabilities = predictionsAll[0];
+        const probabilities = await getPredictions(savedImageUri);
+        console.log(probabilities);
 
         const predictions: Prediction[] = probabilities.map((probability, id) => ({
           id,
@@ -128,7 +106,6 @@ const Recognizer: React.FC<CameraScreenProps> = ({ navigation, model }) => {
       const newId = result.lastInsertRowId;
 
       if (newId) {
-        console.log('Изображение и предсказания сохранены с ID:', newId);
         navigation.navigate('MushroomCard', { id: newId });
         setLoad(false);
       }
@@ -140,38 +117,60 @@ const Recognizer: React.FC<CameraScreenProps> = ({ navigation, model }) => {
 
   const takePicture = async () => {
     if (cameraRef.current) {
-      const photo = await (cameraRef.current as any).takePictureAsync({
-        quality: 1,
-        skipProcessing: false,
-        mute: true,
-      });
       setLoad(true);
-      await handleSave(photo.uri);
+      const photo = await cameraRef.current.takePhoto();
+      await handleSave(photo.path);
     }
   };
 
+  const frameProcessor = useFrameProcessor((frame: Frame) => {
+    'worklet';
+    if (!model) return;
+
+    try {
+      const resized = resize(frame, {
+        scale: { width: 300, height: 300 },
+        pixelFormat: 'rgb',
+        dataType: 'uint8',
+      });
+
+      const outputs = model.runSync([resized]);
+      const predictions = outputs[0];
+      console.log(predictions);
+    } catch (e) {
+      console.error('Ошибка обработки кадра:', e);
+    }
+  }, [model]);
+
+  if (!device) return <Loader />;
+
   return (
-    permission && (
-      <CameraHandler requestPermission={requestPermission} permissionStatus={permission}>
-        <View style={styles.cameraContainer}>
-          {!load && (
-            <>
-              <CameraView style={styles.cameraView} ref={cameraRef}>
-                <CameraOverlay />
-                <TouchableOpacity style={styles.galleryButton} onPress={pickImage}>
-                  <AntDesign name="picture" size={32} color="white" />
-                </TouchableOpacity>
-              </CameraView>
-              <View style={styles.buttonsView}>
-                <Text style={styles.tip}>Поместите гриб в центре кадра</Text>
-                <SearchButton onPress={takePicture} />
-              </View>
-            </>
-          )}
-          {load && <Loader />}
-        </View>
-      </CameraHandler>
-    )
+    <CameraHandler>
+      <View style={styles.cameraContainer}>
+        {!load && (
+          <>
+            <Camera
+              ref={cameraRef}
+              style={styles.cameraView}
+              device={device}
+              isActive={true}
+              photo={true}
+              frameProcessor={frameProcessor}
+            >
+              <CameraOverlay />
+              <TouchableOpacity style={styles.galleryButton} onPress={() => {}}>
+                <AntDesign name="picture" size={32} color="white" />
+              </TouchableOpacity>
+            </Camera>
+            <View style={styles.buttonsView}>
+              <Text style={styles.tip}>Поместите гриб в центре кадра</Text>
+              <SearchButton onPress={takePicture} />
+            </View>
+          </>
+        )}
+        {load && <Loader />}
+      </View>
+    </CameraHandler>
   );
 };
 

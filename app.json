@@ -35,15 +35,9 @@
         }
       ],
       [
-        "expo-camera",
+        "react-native-vision-camera",
         {
-          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera"
-        }
-      ],
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos"
+          "cameraPermissionText": "Fungi needs access to your Camera."
         }
       ],
       [
@@ -60,6 +54,11 @@
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "246dca19-994e-4715-9af3-f25d86703003"
+      }
+    }
   }
 }

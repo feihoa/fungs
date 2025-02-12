@@ -1,61 +1,43 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Linking, Alert } from 'react-native';
 import MainButton from '@/components/shared/MainButton';
-import { PermissionResponse } from 'expo-camera';
+import { Camera, CameraPermissionStatus } from 'react-native-vision-camera';
 
 interface CameraHandlerProps {
   children: React.ReactNode;
-  requestPermission: () => Promise<PermissionResponse>;
-  permissionStatus:
-    | PermissionResponse
-    | { canAskAgain: false; expires: string | number; granted: false; status: 'denied' };
 }
 
-const CameraHandler: React.FC<CameraHandlerProps> = ({
-  children,
-  requestPermission,
-  permissionStatus,
-}) => {
-  const [cameraPermission, setCameraPermission] = useState<boolean | null>(null);
+const CameraHandler: React.FC<CameraHandlerProps> = ({ children }) => {
+  const [cameraPermission, setCameraPermission] = useState<CameraPermissionStatus>('not-determined');
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
   useEffect(() => {
-    const checkPermissions = () => {
-      if (permissionStatus.granted) {
-        setCameraPermission(true);
+    const checkPermissions = async () => {
+      const status = await Camera.getCameraPermissionStatus();
+      setCameraPermission(status);
+      
+      if (status === 'granted') {
         setPermissionError(null);
-      } else if (!permissionStatus.canAskAgain) {
-        setCameraPermission(false);
+      } else if (status === 'denied') {
         setPermissionError('Доступ к камере запрещен. Перейдите в настройки, чтобы включить его.');
-      } else {
-        setCameraPermission(false);
-        setPermissionError('Необходимо предоставить разрешение для доступа к камере.');
       }
     };
 
     checkPermissions();
-  }, [permissionStatus]);
+  }, []);
 
   const handleRequestPermission = async () => {
-    try {
-      const newStatus = await requestPermission();
-      if (newStatus.granted) {
-        setCameraPermission(true);
-        setPermissionError(null);
-      } else if (!newStatus.canAskAgain) {
-        setCameraPermission(false);
-        setPermissionError('Доступ к камере запрещен. Перейдите в настройки, чтобы включить его.');
-      } else {
-        setCameraPermission(false);
-        setPermissionError('Необходимо предоставить разрешение для доступа к камере.');
-      }
-    } catch (error) {
-      console.error('Ошибка при запросе разрешения:', error);
-      setPermissionError('Произошла ошибка при запросе доступа.');
+    const result = await Camera.requestCameraPermission();
+
+    if (result === 'granted') {
+      setCameraPermission('granted');
+      setPermissionError(null);
+    } else {
+      setPermissionError('Необходимо предоставить разрешение для доступа к камере.');
     }
   };
 
-  if (cameraPermission === null) {
+  if (cameraPermission === 'not-determined') {
     return (
       <View style={styles.centeredView}>
         <Text style={styles.permissionText}>Проверка доступ к камере</Text>
@@ -69,13 +51,13 @@ const CameraHandler: React.FC<CameraHandlerProps> = ({
     });
   };
 
-  if (!cameraPermission) {
+  if (cameraPermission !== 'granted') {
     return (
       <View style={styles.centeredView}>
         {permissionError && <Text style={styles.permissionErrorText}>{permissionError}</Text>}
         <MainButton
-          onPress={permissionStatus.canAskAgain ? handleRequestPermission : openAppSettings}
-          text={permissionStatus.canAskAgain ? 'Предоставить доступ' : 'Открыть настройки'}
+          onPress={cameraPermission === 'denied' ? openAppSettings : handleRequestPermission}
+          text={cameraPermission === 'denied' ? 'Открыть настройки' : 'Предоставить доступ'}
         />
       </View>
     );

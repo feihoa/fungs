@@ -4,8 +4,7 @@ import { SQLiteProvider } from 'expo-sqlite';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { ImageBackground, StyleSheet } from 'react-native';
 import { useFonts } from 'expo-font';
-import * as tf from '@tensorflow/tfjs';
-import { loadTFLiteModel, TFLiteModel } from '@tensorflow/tfjs-tflite';
+import { loadTensorflowModel, TensorflowModel } from 'react-native-fast-tflite';
 
 async function initializeDatabase(db: { execAsync: (arg0: string) => any }) {
   try {
@@ -24,7 +23,7 @@ async function initializeDatabase(db: { execAsync: (arg0: string) => any }) {
 }
 
 export default function App() {
-  const [model, setModel] = useState<TFLiteModel | null>(null);
+  const [model, setModel] = useState<TensorflowModel | null>(null);
   const [loaded, error] = useFonts({
     ComicSansRegular: require('./assets/fonts/comic-sans-regular.ttf'),
     ComicSansBold: require('./assets/fonts/comic-sans-bold.ttf'),
@@ -32,13 +31,15 @@ export default function App() {
 
   useEffect(() => {
     const loadModel = async () => {
-      await tf.setBackend('cpu');
-      await tf.ready();
-      console.log(tf.getBackend());
+      try {
+        const modelUri = './assets/models/fungs/fungs.tflite';
+        const model = await loadTensorflowModel(require(modelUri))
+        setModel(model);
 
-      const modelUri = './assets/models/fungs/fungs.tflite';
-      const model = await loadTFLiteModel(modelUri);
-      setModel(model);
+        console.log("Модель загружена успешно.");
+      } catch (err) {
+        console.error("Ошибка при загрузке модели:", err);
+      }
     };
 
     loadModel().catch(console.error);
